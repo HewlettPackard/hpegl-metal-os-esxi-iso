@@ -1,0 +1,282 @@
+#------------------------------------------------------------------------
+# (C) Copyright 2017-2024 Hewlett Packard Enterprise Development LP
+#------------------------------------------------------------------------
+
+# NOTE: During the initial scripted VMware install will use the iLO display,
+# keyboard, etc and there will be no input/output on the serial console.
+
+# See: Installation and Upgrade Script Commands
+# https://docs.vmware.com/en/VMware-vSphere/7.0/com.vmware.esxi.upgrade.doc/GUID-61A14EBB-5CF3-43EE-87EF-DB8EC6D83698.html
+
+# Required: Accepts the ESXi license agreement.
+vmaccepteula
+
+# Required: Sets the root password for the system.
+rootpw %ROOTPW%
+
+{{/* Determine if the Machine/Host has a RAID logical volume setup */}}
+{{/* and get the RAID logical volume ID (either UUID/NAA or EUI) and use below */}}
+{{- $raiduuid := "" }}
+{{- $euiraid := "" }}
+{{- if .DeviceLayouts}}
+# .DeviceLayouts: {{.DeviceLayouts}}
+  {{- range .DeviceLayouts}}
+# .Device: {{.Device}}
+    {{- if uuid .Device}}
+# Logical Volume Found via UUID/NAA: {{.Device}}
+      {{- $raiduuid = .Device}}
+    {{- end}}
+    {{- if hasprefix .Device "eui."}}
+# Logical Volume Found via EUI: {{.Device}}
+      {{- $euiraid = trimprefix .Device "eui."}}
+    {{- end}}
+  {{- end}}
+{{- end}}
+
+# Clears any existing partitions on either the specific
+# RAID logical volume or the first disk.
+{{- if $raiduuid}}
+clearpart --drives=naa.{{lower $raiduuid}} --overwritevmfs
+{{- else }} {{- if $euiraid}}
+clearpart --drives=t10.NVMe____HPE_NS204i2Dp_Gen102B_Boot_Controller_____{{euiswap (lower $euiraid)}} --overwritevmfs
+{{- else}}
+clearpart --firstdisk=local --overwritevmfs
+{{- end}}{{- end}}
+
+# Specifies that this is a fresh installation on either the specific
+# RAID logical volume or the first disk.
+{{- if $raiduuid}}
+install --disk=naa.{{lower $raiduuid}} --overwritevmfs
+{{- else }} {{- if $euiraid}}
+install --disk=t10.NVMe____HPE_NS204i2Dp_Gen102B_Boot_Controller_____{{euiswap (lower $euiraid)}} --overwritevmfs
+{{- else}}
+install --firstdisk=local --overwritevmfs
+{{- end}}{{- end}}
+
+# During the GLM Host deployment use DHCP on the GLM Provisioning network.
+# ESXi needs this to be declared for a fully automated install.
+network --bootproto=dhcp
+
+# The following commands are run only once after the ESXi installation
+# is complete.
+# NOTE: during the %post section we are still connected to the GLM
+# Provisioning network using DHCP, and will not be connected to the GLM
+# Host Network(s) with static IP's until the power off and GLM has
+# connect this host to its GLM Host Network(s) and powered the server
+# back on.
+%post --interpreter=busybox --ignorefailure=true
+
+# Save installation logs.
+mkdir /vmfs/volumes/datastore1/install-logs
+cp /var/log/* /vmfs/volumes/datastore1/install-logs
+
+# Save the kickstart file(s).
+mkdir /vmfs/volumes/datastore1/kickstart
+find / > /vmfs/volumes/datastore1/kickstart/find.lst
+ls -lR / > /vmfs/volumes/datastore1/kickstart/ls-lR.lst
+find / -name ks.cfg > /vmfs/volumes/datastore1/kickstart/ks.cfg.lst
+
+# Copy the HPE GLM KICKSTART FILE
+HPE_GLM_KICKSTART=$(awk '/INFO.*Using ScriptedInstall file:/ { print $NF }' /var/log/esxi_install.log | uniq)
+if [ -f "$HPE_GLM_KICKSTART" ]; then
+cp $HPE_GLM_KICKSTART /vmfs/volumes/datastore1/
+fi
+
+# All done power off the ESXi so that GLM will recognize that we are done deploying ESXi.
+/bin/poweroff -n
+
+########################################################################
+
+# The following commands are run only once after installation is complete.
+%firstboot --interpreter=busybox
+
+# Set hostname based on the HPE Metal configured Host hostname
+{{- if contains .Name "."}}
+esxcli system hostname set --host={{.Name}} --domain {{ .Name }}
+{{else}}
+esxcli system hostname set --host={{.Name}} --domain {{ .Name }}.localdomain
+{{end}}
+
+
+# Set up NTP based on the HPE Metal configured Host hostname
+{{- $ntp := ""}}
+{{- range .Connections }}
+  {{- if gt .UntaggedNet.VID 0 }}
+    {{- range .UntaggedNet.Ranges }}
+      {{- if .NTP}}
+        {{- $ntp = .NTP}}
+      {{- end}}
+    {{- end}}
+  {{- end}}
+  {{- range .Networks }}
+    {{- range .Ranges }}
+      {{- if .NTP}}
+        {{- $ntp = .NTP}}
+      {{- end}}
+    {{- end}}
+  {{- end}}
+{{- end}}
+
+{{- if $ntp}}
+  {{- range $ntp}}
+echo "server {{.}}" >> /etc/ntp.conf
+  {{- end}}
+{{- end}}
+
+/sbin/chkconfig ntpd on
+esxcli network firewall ruleset set --ruleset-id ntpClient --enabled yes
+/etc/init.d/ntpd start
+
+## NTP Synchronization
+sed '$ a\tos maxdist 30' -i /etc/ntp.conf
+/etc/init.d/lwsmd start
+/usr/lib/vmware/likewise/bin/lwregshell set_value '[HKEY_THIS_MACHINE\Services\lsass\Parameters\Providers\ActiveDirectory]' SyncSystemTime 0
+/usr/lib/vmware/likewise/bin/lwsm refresh lsass
+/usr/lib/vmware/likewise/bin/lwregshell list_values '[HKEY_THIS_MACHINE\Services\lsass\Parameters\Providers\ActiveDirectory]' | grep -i SyncSystemTime
+
+
+# Install HPE Metal SSH authorized keys for root user.
+{{- if .SSHKeys }}
+  {{- range $key := .SSHKeys}}
+echo "{{$key}}" >> /etc/ssh/keys-root/authorized_keys
+  {{- end}}
+{{end}}
+
+# Redirect serial console. This allows remote console access via
+# HPE Metal Portal. Note that the serial console starts working after
+# the 2nd boot following installation, so there will be a time where nothing
+# comes out of the console after installation complete and before 2nd boot.
+# Note: ESXi Shell is tty1Port.  Haven't found a way to get
+# both tty1Port and tty2Port on com2 at the same time.
+esxcli system settings kernel set -s gdbPort -v none
+esxcli system settings kernel set -s logPort -v none
+esxcli system settings kernel set -s com2_baud -v 115200
+esxcli system settings kernel set -s tty2Port -v com2
+
+# enable ESXi Shell & SSH access.
+vim-cmd hostsvc/enable_esx_shell
+sleep 5
+vim-cmd hostsvc/start_esx_shell
+vim-cmd hostsvc/enable_ssh
+sleep 5
+vim-cmd hostsvc/start_ssh
+
+# Configure management interface (vmk0) with static IP that
+# came from the HPE Metal host defintion.  Assuming vmk0 resides
+# under default "Management Network" portgroup.
+# NOTE: This block of code is updated by customcfg tool.  It only takes
+# the 1st IP address from network named Public.  You can customize it
+# to look for other network names depending on your network setup.
+{{- range $index, $conn := .Connections}}
+  {{- if gt .UntaggedNet.VID 0 }}
+    {{- if or (eq .UntaggedNet.Name "Public") (eq .UntaggedNet.Purpose "vmKernel")}} {{/* Looking for network named Public or Purpose set to vmKernel */}}
+      {{- range $index2, $range := .UntaggedNet.Ranges}} {{/* Only taking 1st IP Address (Base) */}}
+        {{- if eq $index2 0}}
+esxcli network ip interface ipv4 set --interface-name vmk0 --ipv4 {{.Base}} --netmask {{.Netmask}} -t static
+        {{- end}}
+      {{- end}}
+    {{- end}}
+  {{- end}}
+
+  {{- $length := len .Networks}}
+  {{- range $conn.Networks}}
+    {{- if or (eq .Name "Public") (eq .Purpose "vmKernel")}} {{/* Looking for network named Public or Purpose set to vmKernel */}}
+      {{- range $index2, $range := .Ranges}} {{/* Only taking 1st IP Address (Base) */}}
+        {{- if eq $index2 0}}
+esxcli network ip interface ipv4 set --interface-name vmk0 --ipv4 {{.Base}} --netmask {{.Netmask}} -t static
+        {{- end}}
+      {{- end}}
+      {{- if gt $length 1 }}
+        {{- if ne .VID 0}}
+esxcli network vswitch standard portgroup set --portgroup-name "Management Network" --vlan-id {{.VID}}
+        {{- end}}
+      {{- end}}
+    {{- end}}
+  {{- end}}
+{{- end}}
+
+# setup GW & DNS server, leveraged from Linux cloud-init network setup
+{{ if .Connections}}
+  {{- range .Connections}}
+    {{- if gt .UntaggedNet.VID 0 }}
+      {{- $range_zero := index .UntaggedNet.Ranges 0}}
+  # set GW
+  esxcli network ip route ipv4 add --network default --gateway {{$range_zero.Gateway}}
+      {{- if $range_zero.DNS}}
+        {{- range $range_zero.DNS}}
+  # set DNS server
+  esxcli network ip dns server add --server {{.}}
+        {{- end}}
+      {{- end}}
+      {{- if $range_zero.DNSSearchDomains}}
+        {{- range $range_zero.DNSSearchDomains}}
+  # set DNS search domain
+  esxcli network ip dns search add --domain {{.}}
+        {{- end}}
+      {{- end}}
+    {{- end}}
+    {{- if gt (len .Networks) 0 }}
+      {{- range .Networks}}
+        {{- $range_zero := index .Ranges 0}}
+          # set GW
+          esxcli network ip route ipv4 add --network default --gateway {{$range_zero.Gateway}}
+          {{- if $range_zero.DNS}}
+            {{- range $range_zero.DNS}}
+            # set DNS server
+            esxcli network ip dns server add --server {{.}}
+            {{- end}}
+          {{- end}}
+          {{- if $range_zero.DNSSearchDomains}}
+            {{- range $range_zero.DNSSearchDomains}}
+            # set DNS search domain
+            esxcli network ip dns search add --domain {{.}}
+            {{- end}}
+          {{- end}}
+      {{- end}}
+    {{- end}}
+  {{- end}}  {{/* range .Connections  */}}
+{{- end}}    {{/* end if .Connections */}}
+
+# collect ntp info from BMaaS host definition
+# ----------------------------------------------------
+{{- /* extract ntp info from HostDef struct */}}
+{{- $ntp := ""}}
+{{- range .Connections }}
+  {{- if gt .UntaggedNet.VID 0 }}
+    {{- range .UntaggedNet.Ranges }}
+      {{- if .NTP}}
+        {{- $ntp = .NTP}}
+      {{- end}}
+    {{- end}}
+  {{- end}}
+  {{- range .Networks }}
+    {{- range .Ranges }}
+      {{- if .NTP}}
+        {{- $ntp = .NTP}}
+      {{- end}}
+    {{- end}}
+  {{- end}}
+{{- end}}
+
+# write the /etc/ntp.conf file based on our NTP server(s)
+{{- if $ntp}}
+echo "restrict 127.0.0.1" > /etc/ntp.conf
+echo "restrict default kod nomodify notrap" >> /etc/ntp.conf
+  {{- range $ntp}}
+echo "server {{.}}" >> /etc/ntp.conf
+  {{- end}}
+echo "driftfile /etc/ntp.drift" >> /etc/ntp.conf
+{{- end}}
+
+# Enable time synchronization via NTP.
+services --enabled="chronyd"
+
+# Set the system time zone.
+timezone America/Chicago
+
+{{- if .UserData }}
+# run the UserData commands in the HPE Metal host definition
+{{.UserData}}
+{{end}}
+
+reboot
