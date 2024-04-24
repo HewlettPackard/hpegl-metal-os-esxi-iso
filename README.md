@@ -198,6 +198,7 @@ for a VMware Customer Connect account at https://customerconnect.vmware.com/acco
 
 This ESXi recipe has been successfully tested with the following version of ESXi:
 * ESXi 7.0-U3p
+* ESXi 7.0-U3o
 
 > **_NOTE:_**  This recipe has not been tested on ESXi 5.0 and ESXi 6.0.
 
