@@ -1,0 +1,44 @@
+# (C) Copyright 2021-2024 Hewlett Packard Enterprise Development LP
+---
+name: "BYOI VMware ESXi 7.0 U3p %YYYYMMDD%"
+type: deploy
+svc_category: %SVC_CATEGORY%
+svc_flavor: %SVC_FLAVOR%
+svc_ver: "%SVC_VER%"
+description: "HPE Custom Image for ESXi 7.0 U3p BYOI Install CD. \
+This service is NOT supported on Gen 9 servers (and trying it on a Gen9 server will generate an error).  \
+This image is built based on the following ESXi image: \
+VMware-ESXi-7.0u3p-23307199-HPE-703.0.0.11.6.0.3-Apr2024-depot-HPE-Storage-Connection-Service-HPE-Storage-psp.iso \
+Service built on %YYYYMMDD% by a CircleCI build job based on this recipe \
+repo: https://github.com/hpe-hcss/bmaas-byoi-esxi-build."
+timeout: 1800
+approach: vmedia
+assumed_boot_method: na
+schema_version: v2
+files:
+  - path: "vmware.iso"
+    file_size: %SIZE%
+    display_url: "%DISPLAY_URL%"
+    secure_url: "%SECURE_URL%"
+    download_timeout: 900
+    signature: "%SUM%"
+    algorithm: sha256sum
+info:
+  - encoding: "base64"
+    templating: "go-text-template"
+    templating_input: "hostdef-v2"
+    target: "vmedia-cd"
+    path: "/KS.CFG"
+    contents: "%CONTENT1%"
+origin: Custom
+project_use: true
+hoster_use: true
+classifiers:
+  - name: Not supported on Gen9
+    rules:
+    - attribute: manufacturer
+      value: HPE
+      operator: contains
+    - attribute: model
+      value: Gen9
+      operator: omitsnocase
