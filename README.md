@@ -31,7 +31,6 @@ Workflow for Building Image:
 
 ![image](https://github.com/HewlettPackard/hpegl-metal-os-esxi-iso/assets/90067804/998aa0e5-2bca-4804-be7c-d12964522204)
 
-
 Prerequisites:
 ```
 1. You will need a Web Server with HTTPS support for storage of the HPE Base Metal images.  The Web Server is anything that:
