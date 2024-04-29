@@ -1,14 +1,13 @@
 # (C) Copyright 2021-2024 Hewlett Packard Enterprise Development LP
 ---
-name: "BYOI VMware ESXi 7.0 U3p %YYYYMMDD%"
+name: "BYOI VMware ESXi %ESXI_VERSION% %YYYYMMDD%"
 type: deploy
 svc_category: %SVC_CATEGORY%
 svc_flavor: %SVC_FLAVOR%
 svc_ver: "%SVC_VER%"
-description: "HPE Custom Image for ESXi 7.0 U3p BYOI Install CD. \
+description: "HPE Bare Metal BYOI %SVC_FLAVOR% %ESXI_VERSION%. \
 This service is NOT supported on Gen 9 servers (and trying it on a Gen9 server will generate an error).  \
-This image is built based on the following ESXi image: \
-VMware-ESXi-7.0u3p-23307199-HPE-703.0.0.11.6.0.3-Apr2024-depot-HPE-Storage-Connection-Service-HPE-Storage-psp.iso \
+This image is built based on the following ESXi image: %ESXI_ISO% \
 Service built on %YYYYMMDD% by a CircleCI build job based on this recipe \
 repo: https://github.com/hpe-hcss/bmaas-byoi-esxi-build."
 timeout: 1800

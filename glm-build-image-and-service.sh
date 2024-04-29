@@ -110,7 +110,9 @@ if [ ! -f $GLM_CUSTOM_ESXI_ISO ]; then
 fi
 
 GLM_YML_SERVICE_TEMPLATE=$(mktemp /tmp/glm-service.cfg.XXXXXXXXX)
-sed -e "s/ESXI_VERSION/$ESXI_VER/g" glm-service.yml.template > $GLM_YML_SERVICE_TEMPLATE
+ESXI_ISO=$(basename $ESXI_ISO_FILENAME)
+sed "s/%ESXI_VERSION%/$ESXI_VER/g" glm-service.yml.template | \
+  sed "s/%ESXI_ISO%/$ESXI_ISO/g" > $GLM_YML_SERVICE_TEMPLATE
 
 # set root password in the KS configuration file using environment variable
 sed -i "s/%ROOTPW%/$ESXI_ROOTPW/g" glm-kickstart.cfg.template
