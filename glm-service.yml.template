@@ -12,6 +12,7 @@ Service built on %YYYYMMDD% by a CircleCI build job based on this recipe \
 repo: https://github.com/hpe-hcss/bmaas-byoi-esxi-build."
 timeout: 1800
 approach: vmedia
+no_switch_lag: true
 assumed_boot_method: na
 schema_version: v2
 files:

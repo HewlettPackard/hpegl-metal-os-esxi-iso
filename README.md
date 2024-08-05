@@ -18,6 +18,11 @@ VMware ESXi Bring Your Own Image (BYOI) for HPE Private Cloud Enterprise - Bare 
   *   [Triage of image deployment problems](#triage-of-image-deployment-problems)
   *   [ESXi License](#esxi-license)
   *   [Network Setup](#network-setup)
+* [Included tasks from this example Service](#included-tasks-from-this-example-service)
+  *   [Minimal mgmt IPV4 network setup if secureboot is on](#minimal-mgmt-IPV4-network-setup-if-secureboot-is-on)
+  *   [Alletra iSCSI adapter setup](#alletra-iscsi-adapter-setup)
+  *   [Portgroup setup](#portgroup-setup)
+* [Migrate Standard Switch to Distributed Switch](#migrate-standard-switch-to-distributed-switch)
 
 ----------------------------------
 
@@ -29,7 +34,7 @@ This GitHub repository contains the script files, template files, and documentat
 
 Workflow for Building Image:
 
-![image](https://github.com/HewlettPackard/hpegl-metal-os-esxi-iso/assets/90067804/998aa0e5-2bca-4804-be7c-d12964522204)
+![image](https://github.com/hpe-hcss/bmaas-byoi-esxi-build/assets/90067804/a0dc9215-2be7-42bf-b4d0-6ed7f613d3a1)
 
 Prerequisites:
 ```
@@ -557,4 +562,45 @@ ESXi host's default Firewall information:
    Default Action: DROP
    Enabled: true
    Loaded: true
+```
+# Included tasks from this example Service
+## Minimal mgmt IPV4 network setup if secureboot is on
+the VM Management network is setup in the early phase of install so the machine will be online even with secure boot on.
+## Alletra iSCSI adapter setup
+If one or more storage volume is attached with host create, the volumes will be available and ready to use.
+## Portgroup setup
+* The following Port Group can be created by this service by including the corresponding networks during host creation. The port group type is determined by (purpose tag) of each network.
+### FS MGMT (vmKernel)
+* This is the same Management Network **_NOTE:_** No default VM Network is created
+* vmk Nic (vmk0) is setup with IP Pool information
+### iSCSI-A (iSCSI-A) and iSCSI-B (iSCSI-B)
+* vmk Nic is setup with IP Pool information
+* iSCSI software adapter created
+* host iqn populated
+* CHAP user/secret populated
+* MTU set to 9000
+### vMotion (vMotion)
+* vmk Nic is setup with IP Pool information
+* hostsvc/vmotion/vnic_set
+### vmFT
+* vmk Nic is setup with IP Pool information
+* hostsvc/advopt/update FT.Vmknic updated
+### Telemetry (Telemetry)
+* vmk Nic is setup with IP Pool information
+* A ReadOnly User "telemetry" is created
+### vCHA (vCHA)
+### Backup (Backup)
+## Steps to migrate Standard Switch to Distributed Switch
+```
++------------------------------------------------------------------------------------
+| +----------------------------------------------------------------------------------
+| | Create a Distributed Switch with 2 uplinks
+| | Create Port Groups on Distributed Switch for migration
+| | For each host migrating to Distributed Switch
+| | (1) Add host to vDS
+| | (2) Remove one of the 2 physical NIC on Standard Switch for Distributed VSwitch to use as uplink
+| | (3) Assign port group for each vmk NICs on this host
+| | (4) With desired config confirmed, remove the remaining physical NIC and add it as 2nd uplink of the Distributed VSwitch
+| +----------------------------------------------------------------------------------
++------------------------------------------------------------------------------------
 ```
