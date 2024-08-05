@@ -12,7 +12,7 @@
 vmaccepteula
 
 # Required: Sets the root password for the system.
-rootpw --iscrypted $6$xyz$Y/aitdQEOY7wk5/fO/dopqzVRwASGuYI8CMn.Cz4qfxc/qmJBJIbQPAeFW2TVplkkru8QPs7EuptS2ZF7AHbx0
+rootpw %ROOTPW%
 
 {{/* Determine if the Machine/Host has a RAID logical volume setup */}}
 {{/* and get the RAID logical volume ID (either UUID/NAA or EUI) and use below */}}
