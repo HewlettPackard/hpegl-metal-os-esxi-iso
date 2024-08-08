@@ -53,9 +53,25 @@ install --disk=t10.NVMe____HPE_NS204i2Dp_Gen102B_Boot_Controller_____{{euiswap (
 install --firstdisk=local --overwritevmfs
 {{- end}}{{- end}}
 
-# During the GLM Host deployment use DHCP on the GLM Provisioning network.
-# ESXi needs this to be declared for a fully automated install.
-network --bootproto=dhcp
+# Set hostname based on the HPE Metal configured Host hostname
+{{- $hostname := (printf "%s%s" .Name  ".local") }}
+{{- if contains .Name "."  }}
+  {{ $hostname := .Name }}
+{{- end }}
+
+{{- range $index, $conn := .Connections}}
+  # Expecting tagged Network setup
+  # Setup vmKernel first
+  {{- range $network := $conn.Networks}}
+    {{- if or (eq .Name "Public") (eq .Purpose "vmKernel")}} {{/* Looking for network named Public or Purpose set to vmKernel */}}
+      {{- range $index2, $range := .Ranges}} {{/* Only taking 1st IP Address (Base) */}}
+        {{- if eq $index2 0}}
+network --bootproto=static --addvmportgroup=0 --ip={{.Base}} --netmask={{.Netmask}} --vlanid={{$network.VID}} --gateway={{.Gateway}} --hostname={{$hostname}}
+        {{- end}}
+      {{- end}}
+    {{- end}}
+  {{- end}}
+{{- end}}
 
 # The following commands are run only once after the ESXi installation
 # is complete.
@@ -90,13 +106,23 @@ fi
 # The following commands are run only once after installation is complete.
 %firstboot --interpreter=busybox
 
-# Set hostname based on the HPE Metal configured Host hostname
-{{- if contains .Name "."}}
-esxcli system hostname set --host={{.Name}} --domain {{ .Name }}
-{{else}}
-esxcli system hostname set --host={{.Name}} --domain {{ .Name }}.localdomain
-{{end}}
+sleep 30
 
+keyboard us
+lang en_US
+langsupport --default 
+timezone America/Chicago
+
+# Redirect serial console. This allows remote console access via
+# HPE Metal Portal. Note that the serial console starts working after
+# the 2nd boot following installation, so there will be a time where nothing
+# comes out of the console after installation complete and before 2nd boot.
+# Note: ESXi Shell is tty1Port.  Haven't found a way to get
+# both tty1Port and tty2Port on com2 at the same time.
+esxcli system settings kernel set -s gdbPort -v none
+esxcli system settings kernel set -s logPort -v none
+esxcli system settings kernel set -s com2_baud -v 115200
+esxcli system settings kernel set -s tty2Port -v com2
 
 # Set up NTP based on the HPE Metal configured Host hostname
 {{- $ntp := ""}}
@@ -130,10 +156,6 @@ esxcli network firewall ruleset set --ruleset-id ntpClient --enabled yes
 ## NTP Synchronization
 sed '$ a\tos maxdist 30' -i /etc/ntp.conf
 /etc/init.d/lwsmd start
-/usr/lib/vmware/likewise/bin/lwregshell set_value '[HKEY_THIS_MACHINE\Services\lsass\Parameters\Providers\ActiveDirectory]' SyncSystemTime 0
-/usr/lib/vmware/likewise/bin/lwsm refresh lsass
-/usr/lib/vmware/likewise/bin/lwregshell list_values '[HKEY_THIS_MACHINE\Services\lsass\Parameters\Providers\ActiveDirectory]' | grep -i SyncSystemTime
-
 
 # Install HPE Metal SSH authorized keys for root user.
 {{- if .SSHKeys }}
@@ -142,57 +164,106 @@ echo "{{$key}}" >> /etc/ssh/keys-root/authorized_keys
   {{- end}}
 {{end}}
 
-# Redirect serial console. This allows remote console access via
-# HPE Metal Portal. Note that the serial console starts working after
-# the 2nd boot following installation, so there will be a time where nothing
-# comes out of the console after installation complete and before 2nd boot.
-# Note: ESXi Shell is tty1Port.  Haven't found a way to get
-# both tty1Port and tty2Port on com2 at the same time.
-esxcli system settings kernel set -s gdbPort -v none
-esxcli system settings kernel set -s logPort -v none
-esxcli system settings kernel set -s com2_baud -v 115200
-esxcli system settings kernel set -s tty2Port -v com2
-
 # enable ESXi Shell & SSH access.
 vim-cmd hostsvc/enable_esx_shell
-sleep 5
 vim-cmd hostsvc/start_esx_shell
 vim-cmd hostsvc/enable_ssh
-sleep 5
 vim-cmd hostsvc/start_ssh
 
-# Configure management interface (vmk0) with static IP that
-# came from the HPE Metal host defintion.  Assuming vmk0 resides
-# under default "Management Network" portgroup.
-# NOTE: This block of code is updated by customcfg tool.  It only takes
-# the 1st IP address from network named Public.  You can customize it
-# to look for other network names depending on your network setup.
+#Setup Network Configuration to select correct NIC when ESXi is installed
+esxcli network vswitch standard uplink remove --uplink-name=vmnic0 --vswitch-name=vSwitch0
+
+# get the Initiator IQN
+{{- $host_iqn := .InitiatorName}}
+{{- $chap_user := .CHAPUser}}
+{{- $chap_secret := .CHAPSecret}}
+
 {{- range $index, $conn := .Connections}}
-  {{- if gt .UntaggedNet.VID 0 }}
-    {{- if or (eq .UntaggedNet.Name "Public") (eq .UntaggedNet.Purpose "vmKernel")}} {{/* Looking for network named Public or Purpose set to vmKernel */}}
-      {{- range $index2, $range := .UntaggedNet.Ranges}} {{/* Only taking 1st IP Address (Base) */}}
+  # Add configured links
+  {{- range .Interfaces}}
+esxcli network vswitch standard uplink add --uplink-name=$(esxcli network nic list | grep -i {{.HWAddr}} | awk -F " " '{ print $1 }') --vswitch-name=vSwitch0
+  {{- end}}
+
+  # Setup other Networks
+  {{- range $network := $conn.Networks}}
+    {{- if or (eq .Name "Public") (eq .Purpose "vmKernel")}}
+esxcfg-vswitch -A "FS Mgmt" vSwitch0
+esxcfg-vswitch vSwitch0 -v {{.VID}} -p "FS Mgmt"
+
+    {{- else if or (eq .Name "Storage-Client") (eq .Purpose "iSCSI-A")}}
+esxcfg-vswitch -A "iSCSI-A" vSwitch0
+esxcfg-vswitch vSwitch0 -v {{.VID}} -p "iSCSI-A"
+      {{- range $index2, $range := .Ranges}} {{/* Only taking 1st IP Address (Base) */}}
         {{- if eq $index2 0}}
-esxcli network ip interface ipv4 set --interface-name vmk0 --ipv4 {{.Base}} --netmask {{.Netmask}} -t static
+esxcfg-vmknic -a -i {{.Base}} -n {{.Netmask}} -m 9000 {{$network.Purpose}}
         {{- end}}
       {{- end}}
+      # Enable software iSCSI adapter
+esxcli iscsi software set --enabled=true
+      # Setup host iqn
+hba=`esxcli iscsi adapter list | tail -n +3 | cut -d" " -f1`
+esxcli iscsi adapter set -A $hba -n {{$host_iqn}}
+      # Setup adapter CHAP secret
+esxcli iscsi adapter auth chap set --direction=uni --authname={{$chap_user}} --secret={{$chap_secret}} --level=preferred --adapter $hba
+
+    {{- else if (eq .Purpose "iSCSI-B")}} 
+esxcfg-vswitch -A {{.Purpose}} vSwitch0
+esxcfg-vswitch vSwitch0 -v {{.VID}} -p {{.Purpose}}
+      {{- range $index2, $range := .Ranges}} {{/* Only taking 1st IP Address (Base) */}}
+        {{- if eq $index2 0}}
+esxcfg-vmknic -a -i {{.Base}} -n {{.Netmask}} -m 9000 {{$network.Purpose}}
+        {{- end}}
+      {{- end}}
+
+    {{- else if (eq .Purpose "External" "vCHA" "Backup")}} 
+esxcfg-vswitch -A {{.Purpose}} vSwitch0
+esxcfg-vswitch vSwitch0 -v {{.VID}} -p {{.Purpose}}
+      {{- range $index2, $range := .Ranges}} {{/* Only taking 1st IP Address (Base) */}}
+        {{- if eq $index2 0}}
+esxcfg-vmknic -a -i {{.Base}} -n {{.Netmask}} {{$network.Purpose}}
+        {{- end}}
+      {{- end}}
+
+    {{- else if (eq .Purpose "vmFT")}} 
+esxcfg-vswitch -A {{.Purpose}} vSwitch0
+esxcfg-vswitch vSwitch0 -v {{.VID}} -p {{.Purpose}}
+      {{- range $index2, $range := .Ranges}} {{/* Only taking 1st IP Address (Base) */}}
+        {{- if eq $index2 0}}
+esxcfg-vmknic -a -i {{.Base}} -n {{.Netmask}} {{$network.Purpose}}
+        {{- end}}
+      {{- end}}
+nic=`esxcfg-vmknic -l | grep IPv4 | grep vmFT | cut -d" " -f1`
+vim-cmd hostsvc/advopt/update FT.Vmknic string $nic
+
+    {{- else if (eq .Purpose "Telemetry")}} {{/* Looking for Purpose set to Telemetry */}}
+esxcfg-vswitch -A {{.Purpose}} vSwitch0
+esxcfg-vswitch vSwitch0 -v {{.VID}} -p {{.Purpose}}
+      {{- range $index2, $range := .Ranges}} {{/* Only taking 1st IP Address (Base) */}}
+        {{- if eq $index2 0}}
+esxcfg-vmknic -a -i {{.Base}} -n {{.Netmask}} {{$network.Purpose}}
+PASSWD=$(esxcli hardware platform get | awk '/  Serial Number:/ { print "H" tolower($3) "P" toupper($3) "E!" }')
+esxcli system account add -d "Telemetry" -i "vspherews" -p $PASSWD -c $PASSWD
+esxcli system permission set --id telemetry -r ReadOnly
+        {{- end}}
+      {{- end}}
+    {{- end}}
+  {{- end}}
+  
+  # Another loop for vMotion to avoid selecting different network stack
+  {{- range $network := $conn.Networks}}
+    {{- if (eq .Purpose "vMotion")}} 
+esxcfg-vswitch -A {{.Purpose}} vSwitch0
+esxcfg-vswitch vSwitch0 -v {{.VID}} -p {{.Purpose}}
+      {{- range $index2, $range := .Ranges}} {{/* Only taking 1st IP Address (Base) */}}
+        {{- if eq $index2 0}}
+esxcfg-vmknic -a -i {{.Base}} -n {{.Netmask}} {{$network.Purpose}}
+        {{- end}}
+      {{- end}}
+nic=`esxcfg-vmknic -l | grep IPv4 | grep vMotion | cut -d" " -f1`
+vim-cmd hostsvc/vmotion/vnic_set $nic
     {{- end}}
   {{- end}}
 
-  {{- $length := len .Networks}}
-  {{- range $conn.Networks}}
-    {{- if or (eq .Name "Public") (eq .Purpose "vmKernel")}} {{/* Looking for network named Public or Purpose set to vmKernel */}}
-      {{- range $index2, $range := .Ranges}} {{/* Only taking 1st IP Address (Base) */}}
-        {{- if eq $index2 0}}
-esxcli network ip interface ipv4 set --interface-name vmk0 --ipv4 {{.Base}} --netmask {{.Netmask}} -t static
-        {{- end}}
-      {{- end}}
-      {{- if gt $length 1 }}
-        {{- if ne .VID 0}}
-esxcli network vswitch standard portgroup set --portgroup-name "Management Network" --vlan-id {{.VID}}
-        {{- end}}
-      {{- end}}
-    {{- end}}
-  {{- end}}
 {{- end}}
 
 # setup GW & DNS server, leveraged from Linux cloud-init network setup
@@ -201,7 +272,7 @@ esxcli network vswitch standard portgroup set --portgroup-name "Management Netwo
     {{- if gt .UntaggedNet.VID 0 }}
       {{- $range_zero := index .UntaggedNet.Ranges 0}}
   # set GW
-  esxcli network ip route ipv4 add --network default --gateway {{$range_zero.Gateway}}
+  esxcli network ip route ipv4 add --gateway {{$range_zero.Gateway}}
       {{- if $range_zero.DNS}}
         {{- range $range_zero.DNS}}
   # set DNS server
@@ -219,7 +290,9 @@ esxcli network vswitch standard portgroup set --portgroup-name "Management Netwo
       {{- range .Networks}}
         {{- $range_zero := index .Ranges 0}}
           # set GW
-          esxcli network ip route ipv4 add --network default --gateway {{$range_zero.Gateway}}
+          {{- if $range_zero.Gateway}}
+          esxcli network ip route ipv4 add --gateway {{$range_zero.Gateway}}
+          {{- end}}
           {{- if $range_zero.DNS}}
             {{- range $range_zero.DNS}}
             # set DNS server
@@ -271,8 +344,11 @@ echo "driftfile /etc/ntp.drift" >> /etc/ntp.conf
 # Enable time synchronization via NTP.
 services --enabled="chronyd"
 
-# Set the system time zone.
-timezone America/Chicago
+{{- if .VolumeAttachments}}
+esxcli iscsi adapter discovery sendtarget add --address={{.ISCSIDiscoveryAddress}} --adapter=$hba
+esxcli iscsi adapter discovery rediscover -A $hba
+#esxcli storage core adapter rescan -A $hba
+{{- end}}
 
 {{- if .UserData }}
 # run the UserData commands in the HPE Metal host definition

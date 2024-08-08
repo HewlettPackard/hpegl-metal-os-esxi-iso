@@ -65,7 +65,7 @@ do
         # required parameters
         i) ESXI_ISO_FILENAME=$OPTARG ;;
         v) ESXI_VER=$OPTARG ;;
-        r) ESXI_ROOTPW=$OPTARG ;;
+        r) ESXI_ROOTPW=`openssl passwd -6 -salt xyz $OPTARG` ;;
         o) GLM_CUSTOM_ESXI_ISO=$OPTARG ;;
         p) IMAGE_URL_PREFIX=$OPTARG ;;
         s) GLM_YML_SERVICE_FILE=$OPTARG ;;
@@ -115,7 +115,7 @@ sed "s/%ESXI_VERSION%/$ESXI_VER/g" glm-service.yml.template | \
   sed "s/%ESXI_ISO%/$ESXI_ISO/g" > $GLM_YML_SERVICE_TEMPLATE
 
 # set root password in the KS configuration file using environment variable
-sed -i "s/%ROOTPW%/$ESXI_ROOTPW/g" glm-kickstart.cfg.template
+sed -i "s'%ROOTPW%'$ESXI_ROOTPW'g" glm-kickstart.cfg.template
 
 # Generate HPE GLM service file.
 YYYYMMDD=$(date '+%Y%m%d')
@@ -133,7 +133,7 @@ echo $GEN_SERVICE
 $GEN_SERVICE
 
 # unset root password in the KS configuration file
-sed -i '/rootpw/c\rootpw %ROOTPW%' glm-kickstart.cfg.template
+sed -i '/rootpw/c\rootpw --iscrypted %ROOTPW%' glm-kickstart.cfg.template
 
 # print out instructions for using this image & service
 cat << EOF
