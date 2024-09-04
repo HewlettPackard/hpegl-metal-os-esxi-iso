@@ -1,4 +1,4 @@
-<!-- (C) Copyright 2024 Hewlett Packard Enterprise Development LP -->
+ <!-- (C) Copyright 2024 Hewlett Packard Enterprise Development LP -->
 
 VMware ESXi Bring Your Own Image (BYOI) for HPE Private Cloud Enterprise - Bare Metal
 =============================
@@ -19,10 +19,10 @@ VMware ESXi Bring Your Own Image (BYOI) for HPE Private Cloud Enterprise - Bare 
   *   [ESXi License](#esxi-license)
   *   [Network Setup](#network-setup)
 * [Included tasks from this example Service](#included-tasks-from-this-example-service)
-  *   [Minimal mgmt IPV4 network setup if secureboot is on](#minimal-mgmt-IPV4-network-setup-if-secureboot-is-on)
+  *   [Minimal mgmt IPV4 network setup if secureboot is on](#minimal-mgmt-ipv4-network-setup-if-secureboot-is-on)
   *   [Alletra iSCSI adapter setup](#alletra-iscsi-adapter-setup)
   *   [Portgroup setup](#portgroup-setup)
-* [Migrate Standard Switch to Distributed Switch](#migrate-standard-switch-to-distributed-switch)
+  *   [Steps to migrate Standard Switch to Distributed Switch](#steps-to-migrate-standard-switch-to-distributed-switch)
 
 ----------------------------------
 
@@ -34,7 +34,7 @@ This GitHub repository contains the script files, template files, and documentat
 
 Workflow for Building Image:
 
-![image](https://github.com/HewlettPackard/hpegl-metal-os-esxi-iso/assets/90067804/998aa0e5-2bca-4804-be7c-d12964522204)
+![image](https://github.com/hpe-hcss/bmaas-byoi-esxi-build/assets/90067804/a0dc9215-2be7-42bf-b4d0-6ed7f613d3a1)
 
 Prerequisites:
 ```
@@ -158,7 +158,11 @@ b. Create a Compute Instance by clicking the button "Create compute instance" an
 
 These are the high-level steps required to generate the Bare Metal ESXi service:
 * Set up a Linux system with 20-40GB of free file system space for the build
-* Set up a local file transfer/storage tool (E.g. Local Web Server with HTTPS support) that Bare Metal can reach over the network.
+* Set up a local file transfer/storage tool (E.g. **Local Web Server with HTTPS support**) that Bare Metal can reach over the network.
+  * For **unsecured Web Server access**, please refer to the [Hosting](Hosting.md) for additional requirements, listed below:
+    *  A. **HTTPS** with certificates signed by **publicly trusted Certificate authority**, and
+    *  B. **Skip** the host’s **SSL certificate verification**.
+  * For **Web Server running behind the Firewall**, the Web Server IP address and Port has to be whitelisted in the **rules** and **Proxy**.
 * Install Git Version Control (git) and other ISO tools (genisoimage)
 * Downloading recipe repo from GitHub
 * Download an ESXi .ISO file
@@ -214,6 +218,7 @@ for a VMware Customer Connect account at https://customerconnect.vmware.com/acco
 This ESXi recipe has been successfully tested with the following version of ESXi:
 * ESXi 7.0-U3o
 * ESXi 7.0-U3p
+* ESXi 8.0.2
 
 > **_NOTE:_**  This recipe has not been tested on ESXi 5.0 and ESXi 6.0.
 
