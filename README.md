@@ -34,7 +34,7 @@ This GitHub repository contains the script files, template files, and documentat
 
 Workflow for Building Image:
 
-![image](https://github.com/hpe-hcss/bmaas-byoi-esxi-build/assets/90067804/a0dc9215-2be7-42bf-b4d0-6ed7f613d3a1)
+![image](https://github.com/HewlettPackard/hpegl-metal-os-esxi-iso/assets/90067804/998aa0e5-2bca-4804-be7c-d12964522204)
 
 Prerequisites:
 ```
