@@ -2,11 +2,11 @@
 # (C) Copyright 2018-2022,2024 Hewlett Packard Enterprise Development LP
 
 # This is the top level build script will take a ESXi install ISO and
-# generate a ESXi service.yml file the can be imported as a Host OS into
+# generate an ESXi service.yml file the can be imported as a Host OS into
 # a GreenLake Metal portal.
 
 # glm-build-image-and-service.sh does the following steps:
-# * process command line arguements.
+# * process command line arguments.
 # * Customize the ESXi .ISO so that it works for GLM.  Run: glm-image-build.sh.
 # * Generate GLM service file that is specific to $ESXI_VER. Run: glm-service-build.sh.
 
@@ -36,21 +36,50 @@
 #                            | will be output by the script.  This file should
 #                            | be uploaded to the GLM portal.
 # -------------------------- | -----------
+# -x <skip-test>             | [optional] Skip the test with "-x true"
+#                            | By default this script will run the test "glm-test-service-image.sh"
+#                            | script to verify that the upload was correct, and the size and checksum
+#                            | of the ISO matches what is defined in the YML.
+# -------------------------- | -----------
 
-# NOTE: The user's of this script are expected to copy the <glm-custom-esxi-iso> .ISO file to your web server such
-# that the file is available at this constructed URL: <image-url-prefix>/<glm-custom-esxi-iso>
+# NOTE: Make sure to upload the <glm-custom-esxi-iso> .ISO file to your web server to make it accessible
+# at this constructed URL: # <image-url-prefix>/<glm-custom-esxi-iso>
 
-# If the image URL can't not be constructed with this simple mechanism then you probably need to customize
-# this script for a more complex URL costruction.
+# If the image URL can not be constructed with this simple mechanism, then you probably need to customize
+# this script for a more complex URL construction.
 
-# This script calls glm-image-build.sh, which needs the following packages to be installed:
-#
-# on Debian/Ubuntu:
-#  sudo apt install genisoimage
+# This script calls `glm-image-build.sh`, which needs the following packages to be installed on Debian/Ubuntu:
+# Command: `sudo apt install genisoimage`
+
+# To run the test script: glm-test-service-image.sh
+#   By default this script will run the test script "glm-test-service-image.sh"
+#   to verify that the upload was correct, and the size and checksum of the
+#   ISO matches what is defined in the YML.
+#   Example:
+#     ./glm-build-image-and-service.sh                                       \
+#     -i images/VMware-ESXi-7.0u3o-22348816-HPE-703.0.0.11.5.0.6-Jan2024.iso \
+#     -v 7.0u3o                                                              \
+#     -r PASSWORD                                                            \
+#     -p https://10.152.3.96                                                 \
+#     -o images/VMware-ESXi-7.0u3o-22348816-GLM.iso                          \
+#     -s images/VMware-ESXi-7.0u3o-22348816-GLM.yml
 
 set -euo pipefail
 
-# required parameters
+# ==================================================================================
+# Prerequisites:
+# ==================================================================================
+# Required parameters for Image Web Server and test script "glm-test-service-image.sh"
+#   WEB_SERVER_IP: IP address of web server to transfer ISO to (via SSH)
+#   REMOTE_PATH:   Path on web server to copy files to
+#   SSH_USER:      Username for SSH transfer
+#   Note: Add your Linux test machine's SSH key to the Web Server
+WEB_SERVER_IP="10.152.3.96"
+REMOTE_PATH="/var/www/images/"
+SSH_USER_NAME="root"
+# ==================================================================================
+
+# other required parameters
 ESXI_ISO_FILENAME=""
 GLM_CUSTOM_ESXI_ISO=""
 ESXI_VER=""
@@ -58,8 +87,9 @@ ESXI_ROOTPW=""
 IMAGE_URL_PREFIX=""
 GLM_YML_SERVICE_FILE=""
 GLM_YML_SERVICE_TEMPLATE=""
+SKIP_TEST=""
 
-while getopts "i:v:r:o:p:s:" opt
+while getopts "i:v:r:o:p:s:x:" opt
 do
     case $opt in
         # required parameters
@@ -69,6 +99,8 @@ do
         o) GLM_CUSTOM_ESXI_ISO=$OPTARG ;;
         p) IMAGE_URL_PREFIX=$OPTARG ;;
         s) GLM_YML_SERVICE_FILE=$OPTARG ;;
+        x) SKIP_TEST=$OPTARG ;;
+        *) echo "ERROR invalid parameter."; exit 1 ;;
      esac
 done
 
@@ -97,6 +129,29 @@ clean() {
   fi
 }
 
+# By default this script will run the test "glm-test-service-image.sh" script
+# to verify that the upload was correct, and the size and checksum of the
+# ISO matches what is defined in the YML.
+# Note: Set the Web Server related parameters at the top
+#   User may verify SCP transfer using following commands:
+#     $ echo bye | sftp -b - ${SSH_USER_NAME}@${WEB_SERVER_IP}
+#     $ rsync -av --dry-run ${SOURCE} ${DESTINATION}
+run_test() {
+if [ "${SKIP_TEST}" != "true" ]; then
+  # Run the test by default
+   echo -e "\nCopying .ISO file to the web server..."
+   SOURCE="${GLM_CUSTOM_ESXI_ISO}"
+   DESTINATION="${SSH_USER_NAME}@${WEB_SERVER_IP}:${REMOTE_PATH}"
+   echo "scp ${SOURCE} ${DESTINATION}"
+   scp ${SOURCE} ${DESTINATION}
+   if [ $? -ne 0 ]; then echo "ERROR scp failed to copy image"; exit 1; fi
+   echo -e "\nRunning the test "glm-test-service-image.sh"..."
+   echo "./glm-test-service-image.sh ${GLM_YML_SERVICE_FILE}"
+   ./glm-test-service-image.sh ${GLM_YML_SERVICE_FILE}
+fi
+}
+
+# Set a trap to call the clean function on exit
 trap clean EXIT
 
 # if the GLM customizied ESXi .ISO has not aleady been generated.
@@ -135,7 +190,16 @@ $GEN_SERVICE
 # unset root password in the KS configuration file
 sed -i '/rootpw/c\rootpw --iscrypted %ROOTPW%' glm-kickstart.cfg.template
 
+# By default run the test script "glm-test-service-image.sh" to verify ISO image
+run_test
+
 # print out instructions for using this image & service
+NOTE="| |     
+| |     IMPORTANT: Use the test (glm-test-service-image.sh) script to verify that
+| |                the ISO upload was correct, and the size and checksum of the ISO
+| |                match what is defined in the YML.
+| |"
+
 cat << EOF
 +------------------------------------------------------------------------------------------
 | +----------------------------------------------------------------------------------------
@@ -149,18 +213,16 @@ cat << EOF
 | |
 | | To use this new Bare Metal ESXi service/image in the HPE Bare Metal, take the following steps:
 | | (1) Copy the new .ISO file ($GLM_CUSTOM_ESXI_ISO)
-| |     to your web server ($IMAGE_URL_PREFIX)
-| |     such that the file can be downloaded from the following URL:
-| |     $IMAGE_URL_PREFIX/$GLM_CUSTOM_ESXI_ISO
-| | (2) Use the script "glm-test-service-image.sh" to test that the HPE Bare Metal service
-| |     .yml file points to the expected OS image on the web server with the expected OS image
-| |     size and signature.
-| | (3) Add the Bare Metal Service file ($GLM_YML_SERVICE_FILE) to the HPE Bare Metal Portal
+| |     to your web server ($IMAGE_URL_PREFIX) such that the file can be downloaded
+| |     from the following URL: $IMAGE_URL_PREFIX/$GLM_CUSTOM_ESXI_ISO
+`if [ "${SKIP_TEST}" == "true" ]; then echo "${NOTE}"; echo ; else echo "| |"; fi`
+| | (2) Add the Bare Metal Service file ($GLM_YML_SERVICE_FILE) to the HPE Bare Metal Portal
 | |     (https://client.greenlake.hpe-gl-intg.com/). To add the HPE Metal Service file,
 | |     sign in to the HPE Bare Metal Portal and select the Tenant by clicking "Go to tenant".
 | |     Select the Dashboard tile "Metal Consumption" and click on the Tab "OS/application images".
 | |     Click on the button "Add OS/application image" to Upload the OS/application YML file.
-| | (4) Create a Bare Metal host using this OS image service.
+| |
+| | (3) Create a Bare Metal host using this OS image service.
 | +----------------------------------------------------------------------------------------
 +------------------------------------------------------------------------------------------
 EOF
