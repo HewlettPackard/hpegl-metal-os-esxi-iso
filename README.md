@@ -18,6 +18,7 @@ VMware ESXi Bring Your Own Image (BYOI) for HPE Private Cloud Enterprise - Bare 
   *   [Triage of image deployment problems](#triage-of-image-deployment-problems)
   *   [ESXi License](#esxi-license)
   *   [Network Setup](#network-setup)
+* [Known Observations and Limitations](#known-observations-and-limitations)
 * [Included tasks from this example Service](#included-tasks-from-this-example-service)
   *   [Minimal mgmt IPV4 network setup if secureboot is on](#minimal-mgmt-ipv4-network-setup-if-secureboot-is-on)
   *   [Alletra iSCSI adapter setup](#alletra-iscsi-adapter-setup)
@@ -34,16 +35,40 @@ This GitHub repository contains the script files, template files, and documentat
 
 Workflow for Building Image:
 
-![image](https://github.com/HewlettPackard/hpegl-metal-os-esxi-iso/assets/90067804/998aa0e5-2bca-4804-be7c-d12964522204)
+![image](https://github.com/hpe-hcss/bmaas-byoi-esxi-build/assets/90067804/a0dc9215-2be7-42bf-b4d0-6ed7f613d3a1)
 
 Prerequisites:
 ```
-1. You will need a Web Server with HTTPS support for storage of the HPE Base Metal images.  The Web Server is anything that:
-   A. You have the ability to upload large .ISO image to and
-   B. The Web Server must be on a network that will be reachable from the HPE On-Premises Controller.  When an OS service/image is used to create an HPE Bare Metal Host, the OS images will be downloaded via the secure URL in the service file.
-   NOTE: For this manual build example, a local Web Server "http://10.152.2.125" is used for OS image storage.  For this example, we are assuming that the HPE Bare Metal OS images will be kept in: http://10.152.2.125/images/<.iso>.
-2. Linux machine for building OS image
-   A. Ubuntu 20.04.6 LTS
+1. You will need a Web Server with HTTPS support for storage of the HPE Base Metal images.
+2. The Web Server is anything that:
+    A. you have the ability to upload large OS image (.iso) to, and
+    B. is on a network that will be reachable from the HPE On-Premises Controller.
+       When an OS image service (.yml) is used to create an HPE Bare Metal Host, the HPE Bare Metal
+       OS image (.iso) will be downloaded via the `secure_url` mentioned in the service file (.yml).
+3. IMPORTANT:
+   The test `glm-test-service-image.sh` script is to verify the HPE Bare Metal OS image (.iso).
+   To run this test, edit the file `./glm-build-image-and-service.sh` to set the required
+   Web Server-related parameters, listed below:
+      +----------------------------------------------------------------------------
+      | +--------------------------------------------------------------------------
+      | | File `./glm-build-image-and-service.sh`
+      | |   <1> WEB_SERVER_IP: IP address of web server to transfer ISO to (via SSH)
+      | |       Example: WEB_SERVER_IP="10.152.3.96"
+      | |   <2> REMOTE_PATH:   Path on web server to copy files to
+      | |       Example: REMOTE_PATH="/var/www/images/"
+      | |   <3> SSH_USER:      Username for SSH transfer
+      | |       Example: SSH_USER_NAME="root"
+      | | Note: Add your Linux test machine's SSH key to the Web Server
+      | +--------------------------------------------------------------------------
+      +----------------------------------------------------------------------------
+   In this document, for the manual build example:
+   A. a local Web Server "https://10.152.3.96" is used for the storage of OS images (.iso).
+   B. we are assuming that the HPE Bare Metal OS images will be kept in: https://10.152.3.96/images/<.iso>
+4. Linux machine for building OS image:
+   A. Image building has been successfully tested with the following list of Ubuntu OS and its LTS versions:
+      Ubuntu 20.04.6 LTS (focal)
+      Ubuntu 22.04.5 LTS (jammy)
+      Ubuntu 24.04.1 LTS (noble)
    B. Install supporting tools (git and genisoimage)
 ```
 
@@ -55,98 +80,70 @@ git clone https://github.com/HewlettPackard/hpegl-metal-os-esxi-iso.git
 B. Change directory to `hpegl-metal-os-esxi-iso`.
 
 Step 2. Download the ESXi .ISO image to your local build environment via what ever method you prefer (Web Browser, etc)  
-For example, we will assume that you have downloaded VMware-ESXi-7.0u3p-23307199-HPE.iso into the local directory.
+For example, we will assume that you have downloaded VMware-ESXi-7.0u3o-23307199-HPE.iso into the local directory.
 
 Step 3. Run the script `glm-build-image-and-service.sh` to generate an output Bare Metal image .ISO as well as Bare Metal Service .yml:
 
-Example:
+Example: Run the build including artifact verification
 ```
 ./glm-build-image-and-service.sh \
-  -v 7.0u3p \
-  -p http://10.152.2.125 \
+  -v 7.0u3o \
+  -p http://10.152.3.96 \
   -r qPassw0rd \
-  -i VMware-ESXi-7.0u3p-23307199-HPE.iso \
-  -o ESXi-7.0u3p-BareMetal.iso \
-  -s ESXi-7.0u3p-BareMetal.yml
+  -i VMware-ESXi-7.0u3o-23307199-HPE.iso \
+  -o ESXi-7.0u3o-BareMetal.iso \
+  -s ESXi-7.0u3o-BareMetal.yml
+```
+Example: Run the build excluding artifact verification
+```
+./glm-build-image-and-service.sh \
+  -v 7.0u3o \
+  -p http://10.152.3.96 \
+  -r qPassw0rd \
+  -i VMware-ESXi-7.0u3o-23307199-HPE.iso \
+  -o ESXi-7.0u3o-BareMetal.iso \
+  -s ESXi-7.0u3o-BareMetal.yml
+  -x true
 ```
 
 Example test result for reference:
 ```
-+------------------------------------------------------------------------------------
-| +----------------------------------------------------------------------------------
-| | ESXi ESXi-7.0u3p-BareMetal.iso will operate in evaluation mode for 60 days.
-| | To use this ESXi ESXi-7.0u3p-BareMetal.iso after the evaluation period,
++------------------------------------------------------------------------------------------
+| +----------------------------------------------------------------------------------------
+| | ESXi images/VMware-ESXi-7.0u3o-22348816-GLM.iso will operate in evaluation mode for 60 days.
+| | To use this ESXi images/VMware-ESXi-7.0u3o-22348816-GLM.iso after the evaluation period,
 | | you must register for a VMware product license.
 | |
 | | This build has generated a new Bare Metal ESXi service/image
 | | that consists of the following 2 new files:
-| |     ESXi-7.0u3p-BareMetal.iso
-| |     ESXi-7.0u3p-BareMetal.yml
+| |     images/VMware-ESXi-7.0u3o-22348816-GLM.iso
+| |     images/VMware-ESXi-7.0u3o-22348816-GLM.yml
 | |
-| | To use this new Bare Metal ESXi service/image in the HPE Bare Metal, take the
-| | following steps:
-| | (1) Copy the new .ISO file (ESXi-7.0u3p-BareMetal.iso)
-| |     to your web server (https://<web-server-address>)
-| |     such that the file can be downloaded from the following URL:
-| |     https://<web-server-address>/ESXi-7.0u3p-BareMetal.iso
-| | (2) Use the script "glm-test-service-image.sh" to test that the HPE Bare Metal
-| |     service .yml file points to the expected OS image on the web server with
-| |     the expected OS image size and signature.
-| | (3) Add the Bare Metal Service file to the HPE Bare Metal Portal
-| |     (https://client.greenlake.hpe-gl-intg.com/). To add the HPE Bare Metal
-| |     Service file, sign in to the HPE Bare Metal Portal and select the Tenant
-| |     by clicking "Go to tenant". Select the Dashboard tile "Metal Consumption"
-| |     and click on the Tab "OS/application images". Click on the button
-| |     "Add OS/application image" to Upload the OS/application YML file.
-| | (4) Create a Bare Metal host using this OS image service.
-| +----------------------------------------------------------------------------------
-+------------------------------------------------------------------------------------
+| | To use this new Bare Metal ESXi service/image in the HPE Bare Metal, take the following steps:
+| | (1) Copy the new .ISO file (images/VMware-ESXi-7.0u3o-22348816-GLM.iso)
+| |     to your web server (https://10.152.3.96) such that the file can be downloaded
+| |     from the following URL: https://10.152.3.96/images/VMware-ESXi-7.0u3o-22348816-GLM.iso
+| |
+| | (2) Add the Bare Metal Service file (images/VMware-ESXi-7.0u3o-22348816-GLM.yml) to the HPE Bare Metal Portal
+| |     (https://client.greenlake.hpe-gl-intg.com/). To add the HPE Metal Service file,
+| |     sign in to the HPE Bare Metal Portal and select the Tenant by clicking "Go to tenant".
+| |     Select the Dashboard tile "Metal Consumption" and click on the Tab "OS/application images".
+| |     Click on the button "Add OS/application image" to Upload the OS/application YML file.
+| |
+| | (3) Create a Bare Metal host using this OS image service.
+| +----------------------------------------------------------------------------------------
++------------------------------------------------------------------------------------------
 ```
 
 Step 4. Copy the output Bare Metal image .ISO to the Web Server.
 
-Step 5. Run the script `glm-test-service-image.sh`, which will verify that the OS image referred to in a corresponding Bare Metal OS service .yml is correct:
-> **_NOTE:_** This script will verify that it can download the OS image and check its length (in bytes) and signature.
-> The script simulates what the HPE On-Premises Controller will do when it tries to download and verify an OS image.
-> If this script fails then the Bare Metal OS service .yml file is most likely broken and will not work if loaded into Bare Metal.
-
-Example:
-```
-./glm-test-service-image.sh ESXi-7.0u3p-BareMetal.yml
-```
-
-Test result for reference:
-```
-OS image file to be tested:
-  Secure URL: http://10.152.2.125/images/ESXi-7.0u3p-BareMetal.iso
-  Display URL: images/VMware-ESXi-7.0u3p-23307199-HPE.iso
-  Image size: 480323584
-  Image signature: 98b29a9ecf9e9572cf9d34e5c57edcc2865c63ccf4eea9c5e846e0463d8fa04a
-  Signature algorithm: sha256sum
-
-wget -O /tmp/os-image-ARXIMa.img http://10.152.2.125/images/ESXi-7.0u3p-BareMetal.iso
---2024-03-18 23:22:12--  http://10.152.2.125/images/ESXi-7.0u3p-BareMetal.iso
-Connecting to 10.79.90.46:80... connected.
-Proxy request sent, awaiting response... 200 OK
-Length: 480323584 (458M) [application/x-iso9660-image]
-Saving to: ‘/tmp/os-image-ARXIMa.img’
-
-/tmp/os-image-ARXIMa.img                      100%[================================================================================================>] 458.07M  21.1MB/s    in 21s
-
-2024-03-18 23:22:33 (21.4 MB/s) - ‘/tmp/os-image-ARXIMa.img’ saved [480323584/480323584]
-
-Image Size has been verified ( 480323584 bytes )
-Image Signature has been verified ( 98b29a9ecf9e9572cf9d34e5c57edcc2865c63ccf4eea9c5e846e0463d8fa04a )
-The OS image size and signature have been verified
-```
-
-Step 6. Add the Bare Metal service .yml file to the appropriate Bare Metal portal.
+Step 5. Add the Bare Metal service .yml file to the appropriate Bare Metal portal.
 
 To add the Bare Metal service .yml file, sign in to the HPE Bare Metal Portal and select the Tenant by clicking "Go to tenant".  
 Select the Dashboard tile "Metal Consumption" and click on the tab "OS/application images".  
 Click on the button "Add OS/application image" to upload this service .yml file.  
 
-Step 7. Create a new Bare Metal host using this OS image service.
+Step 6. Create a new Bare Metal host using this OS image service.
 
 To create a new Bare Metal host, sign in to the HPE Bare Metal Portal and select the Tenant by clicking "Go to tenant".  
 Select the Dashboard tile "Metal Consumption" and click on the tab "Compute groups". Further, create a host using the following steps:    
@@ -216,9 +213,9 @@ for a VMware Customer Connect account at https://customerconnect.vmware.com/acco
 > VMware Customer Connect simplifies the management of free trials, downloads, and support.
 
 This ESXi recipe has been successfully tested with the following version of ESXi:
-* ESXi 7.0-U3o
-* ESXi 7.0-U3p
-* ESXi 8.0.2
+* VMware ESXi-7.0u3o Build 22348816
+* VMware ESXi-8.0u2b Build 23305546
+* VMware ESXi-8.0u3 Build 24022510
 
 > **_NOTE:_**  This recipe has not been tested on ESXi 5.0 and ESXi 6.0.
 
@@ -277,13 +274,14 @@ glm-build-image-and-service.sh \
     -s <esxi-baremetal-service-file>
 ```
 
-Command Line Options         | Description
------------------------------| -----------
--i \<esxi-iso-filename\>     | local filename of the standard ESXi .ISO file that was already downloaded. Used as input file.
--v \<esxi-version-number\>   | a x.y ESXi version number.  Example: -v 7.9
--o \<esxi-baremetal-iso\>   | local filename of the Bare Metal modified ESXi .ISO file that will be output by the script. This file should be uploaded to your web server.
--p \<image-url-prefix\>      | the beginning of the image URL (on your web server). Example: -p https://<web-server-address>.
+Command Line Options                | Description
+------------------------------------| -----------
+-i \<esxi-iso-filename\>            | local filename of the standard ESXi .ISO file that was already downloaded. Used as input file.
+-v \<esxi-version-number\>          | a x.y ESXi version number.  Example: -v 7.9
+-o \<esxi-baremetal-iso\>           | local filename of the Bare Metal modified ESXi .ISO file that will be output by the script. This file should be uploaded to your web server.
+-p \<image-url-prefix\>             | the beginning of the image URL (on your web server). Example: -p https://<web-server-address>.
 -s \<esxi-baremetal-service-file\>  | local filename of the Bare Metal .YML service file that will be output by the script. This file should be uploaded to the Bare Metal portal.
+-x \<skip-test>                     | [optional] skip the test with "-x true". <br> **_NOTE:_**  <br> By default, this script will run the test [glm-test-service-image.sh](glm-test-service-image.sh) script to verify that the upload was correct, and the size and checksum of the ISO match what is defined in the YML.
 
 > **_NOTE:_**  The users of this script are expected to copy the \<esxi-baremetal-iso\> .ISO file to your web server
 > such that the file is available at this constructed URL: \<image-url-prefix\>/\<esxi-baremetal-iso\>
@@ -321,8 +319,8 @@ Command Line Options      | Description
 Example:
 ```
 sudo ./glm-image-build.sh \
-    -i VMware-ESXi-7.0u3p-23307199-HPE.iso \
-    -o ESXi-7.0u3p-BareMetal.iso
+    -i VMware-ESXi-7.0u3o-23307199-HPE.iso \
+    -o ESXi-7.0u3o-BareMetal.iso
 ```
 
 Here are the detailed changes that are made to the ESXi .ISO:
@@ -365,13 +363,13 @@ Example:
 ```
 ./glm-service-build.sh \
     -s /tmp/glm-service.cfg.RPmVhIbQf \
-    -o ESXi-7.0u3p-BareMetal.yml \
+    -o ESXi-7.0u3o-BareMetal.yml \
     -c VMware \
     -f ESXi \
     -v 7.0-U3o-20240306-BYOI \
-    -u http://10.152.2.125/images/ESXi-7.0u3p-BareMetal.iso \
-    -d ESXi-7.0u3p-BareMetal.iso \
-    -i VMware-ESXi-7.0u3p-23307199-HPE.iso \
+    -u http://10.152.2.125/images/ESXi-7.0u3o-BareMetal.iso \
+    -d ESXi-7.0u3o-BareMetal.iso \
+    -i VMware-ESXi-7.0u3o-23307199-HPE.iso \
     -t glm-kickstart.cfg.template
 ```
 
@@ -390,7 +388,7 @@ Command Line Options            | Description
 
 Example:
 ```
-./glm-test-service-image.sh ESXi-7.0u3p-BareMetal.yml
+./glm-test-service-image.sh ESXi-7.0u3o-BareMetal.yml
 ```
 
 # Customizing ESXi image
@@ -412,6 +410,7 @@ glm-service-build.sh           | This script generates a Bare Metal OS service .
 glm-test-service-image.sh      | This is a script that will verify that the OS image referred to in a corresponding Bare Metal OS service .yml is correct.
 glm-kickstart.cfg.template     | The core ESXi kickstart file (templated with install-env-v1)
 glm-service.yml.template       | This is the Bare Metal .YML service file template.
+Hosting.md                     | This file is for additional requirements on the web server.
 
 Feel free to modify these files to suit your specific needs. General changes that you want to contribute back via a pull request are much appreciated.
 
@@ -428,36 +427,31 @@ When the build script completes successfully, you will find the following instru
 For example:
 
 ```
-+------------------------------------------------------------------------------------
-| +----------------------------------------------------------------------------------
-| | ESXi ESXi-7.0u3p-BareMetal.iso will operate in evaluation mode for 60 days.
-| | To use this ESXi ESXi-7.0u3p-BareMetal.iso after the evaluation period,
++------------------------------------------------------------------------------------------
+| +----------------------------------------------------------------------------------------
+| | ESXi images/VMware-ESXi-7.0u3o-22348816-GLM.iso will operate in evaluation mode for 60 days.
+| | To use this ESXi images/VMware-ESXi-7.0u3o-22348816-GLM.iso after the evaluation period,
 | | you must register for a VMware product license.
 | |
 | | This build has generated a new Bare Metal ESXi service/image
 | | that consists of the following 2 new files:
-| |     ESXi-7.0u3p-BareMetal.iso
-| |     ESXi-7.0u3p-BareMetal.yml
+| |     images/VMware-ESXi-7.0u3o-22348816-GLM.iso
+| |     images/VMware-ESXi-7.0u3o-22348816-GLM.yml
 | |
-| | To use this new Bare Metal ESXi service/image in the HPE Bare Metal,
-| | take the following steps:
-| | (1) Copy the new .ISO file (ESXi-7.0u3p-BareMetal.iso)
-| |     to your web server (https://<web-server-address>)
-| |     such that the file can be downloaded from the following URL:
-| |     https://<web-server-address>/ESXi-7.0u3p-BareMetal.iso
-| | (2) Use the script "glm-test-service-image.sh" to test that the HPE
-| |     Bare Metal service .yml file points to the expected OS image on the
-| |     Web Server with the expected OS image size and signature.
-| | (3) Add the Bare Metal Service file to the HPE Bare Metal Portal
-| |     (https://client.greenlake.hpe-gl-intg.com/). To add the HPE
-| |     Bare Metal Service file, sign in to the HPE Bare Metal Portal and
-| |     select the Tenant by clicking "Go to tenant". Select the Dashboard tile
-| |     "Metal Consumption" and click on the Tab "OS/application images".
-| |     Click on the button "Add OS/application image" to Upload the
-| |     OS/application YML file.
-| | (4) Create a Bare Metal host using this OS image service.
-| +----------------------------------------------------------------------------------
-+------------------------------------------------------------------------------------
+| | To use this new Bare Metal ESXi service/image in the HPE Bare Metal, take the following steps:
+| | (1) Copy the new .ISO file (images/VMware-ESXi-7.0u3o-22348816-GLM.iso)
+| |     to your web server (https://10.152.3.96) such that the file can be downloaded
+| |     from the following URL: https://10.152.3.96/images/VMware-ESXi-7.0u3o-22348816-GLM.iso
+| |
+| | (2) Add the Bare Metal Service file (images/VMware-ESXi-7.0u3o-22348816-GLM.yml) to the HPE Bare Metal Portal
+| |     (https://client.greenlake.hpe-gl-intg.com/). To add the HPE Metal Service file,
+| |     sign in to the HPE Bare Metal Portal and select the Tenant by clicking "Go to tenant".
+| |     Select the Dashboard tile "Metal Consumption" and click on the Tab "OS/application images".
+| |     Click on the button "Add OS/application image" to Upload the OS/application YML file.
+| |
+| | (3) Create a Bare Metal host using this OS image service.
+| +----------------------------------------------------------------------------------------
++------------------------------------------------------------------------------------------
 ```
 Follow the instructions as directed!
 
@@ -479,7 +473,7 @@ ESXi is a licensed software and users need to have a valid license key from VMwa
 This install service does nothing to set up an ESXi license key in any way.  Users are expected to manually use ESXi tools to set up an ESXi license on the host.
 
 > **_NOTE:_** ESXi will operate in evaluation mode and this license will expire in 60 days.
-> To use this ESXi ESXi-7.0u3p-BareMetal.iso after the evaluation period, you must register for a VMware product license.
+> To use this ESXi ESXi-7.0u3o-BareMetal.iso after the evaluation period, you must register for a VMware product license.
 
 ## Network Setup
 
@@ -568,6 +562,12 @@ ESXi host's default Firewall information:
    Enabled: true
    Loaded: true
 ```
+
+# Known Observations and Limitations
+<1> Host readiness for the user to log in  
+After the host is created successfully, the Portal UI shows progress 100%.  
+However, the host os is still booting up in the background, resulting in user login (serial console login and SSH login) being delayed by 2 to 3 minutes.
+
 # Included tasks from this example Service
 ## Minimal mgmt IPV4 network setup if secureboot is on
 the VM Management network is setup in the early phase of install so the machine will be online even with secure boot on.
