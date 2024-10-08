@@ -243,7 +243,7 @@ esxcfg-vswitch vSwitch0 -v {{.VID}} -p {{.Purpose}}
 esxcfg-vmknic -a -i {{.Base}} -n {{.Netmask}} {{$network.Purpose}}
 PASSWD=$(esxcli hardware platform get | awk '/  Serial Number:/ { print "H" tolower($3) "P" toupper($3) "E!" }')
 esxcli system account add -d "Telemetry" -i "vspherews" -p $PASSWD -c $PASSWD
-esxcli system permission set --id telemetry -r ReadOnly
+esxcli system permission set -i "vspherews" -r ReadOnly
         {{- end}}
       {{- end}}
     {{- end}}
