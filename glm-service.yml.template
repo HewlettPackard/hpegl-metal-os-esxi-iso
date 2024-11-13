@@ -23,6 +23,7 @@ files:
     download_timeout: 900
     signature: "%SUM%"
     algorithm: sha256sum
+    skip_ssl_verify: false
 info:
   - encoding: "base64"
     templating: "go-text-template"
