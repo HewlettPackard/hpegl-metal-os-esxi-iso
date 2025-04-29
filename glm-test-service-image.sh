@@ -77,6 +77,7 @@ echo -e "\nDownload the image from the source:"
 args=(
   --no-proxy #optional parameter
   --no-check-certificate #optional parameter
+  --no-verbose #optional parameter
 )
 DOWNLOAD="wget                                   \
 ${args[*]} `#add parameters from the list above` \
