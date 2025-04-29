@@ -1,5 +1,5 @@
 #------------------------------------------------------------------------
-# (C) Copyright 2017-2024 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2017-2025 Hewlett Packard Enterprise Development LP
 #------------------------------------------------------------------------
 
 # NOTE: During the initial scripted VMware install will use the iLO display,
@@ -33,25 +33,22 @@ rootpw --iscrypted %ROOTPW%
   {{- end}}
 {{- end}}
 
+# Boot from SAN, pick the 1st FC LUN
+{{- if eq .AssumedBootMethod "fc"}}
+clearpart --firstdisk=qlnativefc,lpfc --overwritevmfs
+install --firstdisk=qlnativefc,lpfc --overwritevmfs
 # Clears any existing partitions on either the specific
 # RAID logical volume or the first disk.
-{{- if $raiduuid}}
+{{- else if $raiduuid}}
 clearpart --drives=naa.{{lower $raiduuid}} --overwritevmfs
-{{- else }} {{- if $euiraid}}
-clearpart --drives=t10.NVMe____HPE_NS204i2Dp_Gen102B_Boot_Controller_____{{euiswap (lower $euiraid)}} --overwritevmfs
-{{- else}}
-clearpart --firstdisk=local --overwritevmfs
-{{- end}}{{- end}}
-
-# Specifies that this is a fresh installation on either the specific
-# RAID logical volume or the first disk.
-{{- if $raiduuid}}
 install --disk=naa.{{lower $raiduuid}} --overwritevmfs
-{{- else }} {{- if $euiraid}}
+{{- else if $euiraid}}
+clearpart --drives=t10.NVMe____HPE_NS204i2Dp_Gen102B_Boot_Controller_____{{euiswap (lower $euiraid)}} --overwritevmfs
 install --disk=t10.NVMe____HPE_NS204i2Dp_Gen102B_Boot_Controller_____{{euiswap (lower $euiraid)}} --overwritevmfs
 {{- else}}
+clearpart --firstdisk=local --overwritevmfs
 install --firstdisk=local --overwritevmfs
-{{- end}}{{- end}}
+{{- end}}
 
 # Set hostname based on the HPE Metal configured Host hostname
 {{- $hostname := (printf "%s%s" .Name  ".local") }}
@@ -269,7 +266,7 @@ vim-cmd hostsvc/vmotion/vnic_set $nic
 # setup GW & DNS server, leveraged from Linux cloud-init network setup
 {{ if .Connections}}
   {{- range .Connections}}
-    {{- if gt .UntaggedNet.VID 0 }}
+    {{- if and (gt .UntaggedNet.VID 0) (eq .UntaggedNet.NoIPAddr false) }}
       {{- $range_zero := index .UntaggedNet.Ranges 0}}
   # set GW
   esxcli network ip route ipv4 add --gateway {{$range_zero.Gateway}}
@@ -288,6 +285,7 @@ vim-cmd hostsvc/vmotion/vnic_set $nic
     {{- end}}
     {{- if gt (len .Networks) 0 }}
       {{- range .Networks}}
+        {{- if eq .NoIPAddr false }}
         {{- $range_zero := index .Ranges 0}}
           # set GW
           {{- if $range_zero.Gateway}}
@@ -305,8 +303,9 @@ vim-cmd hostsvc/vmotion/vnic_set $nic
             esxcli network ip dns search add --domain {{.}}
             {{- end}}
           {{- end}}
-      {{- end}}
-    {{- end}}
+        {{- end}}
+      {{- end}}  {{/* range .Networks  */}}
+    {{- end}}    {{/* if gt (len .Networks) 0 */}}
   {{- end}}  {{/* range .Connections  */}}
 {{- end}}    {{/* end if .Connections */}}
 
@@ -355,4 +354,4 @@ esxcli iscsi adapter discovery rediscover -A $hba
 {{.UserData}}
 {{end}}
 
-reboot
+esxcli system shutdown reboot -d 30
