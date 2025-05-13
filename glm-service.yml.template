@@ -27,7 +27,7 @@ files:
 info:
   - encoding: "base64"
     templating: "go-text-template"
-    templating_input: "hostdef-v4"
+    templating_input: "hostdef-v3"
     target: "vmedia-cd"
     path: "/KS.CFG"
     contents: "%CONTENT1%"
