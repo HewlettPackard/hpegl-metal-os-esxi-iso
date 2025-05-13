@@ -266,7 +266,7 @@ vim-cmd hostsvc/vmotion/vnic_set $nic
 # setup GW & DNS server, leveraged from Linux cloud-init network setup
 {{ if .Connections}}
   {{- range .Connections}}
-    {{- if and (gt .UntaggedNet.VID 0) (eq .UntaggedNet.NoIPAddr false) }}
+    {{- if gt .UntaggedNet.VID 0 }}
       {{- $range_zero := index .UntaggedNet.Ranges 0}}
   # set GW
   esxcli network ip route ipv4 add --gateway {{$range_zero.Gateway}}
@@ -285,7 +285,6 @@ vim-cmd hostsvc/vmotion/vnic_set $nic
     {{- end}}
     {{- if gt (len .Networks) 0 }}
       {{- range .Networks}}
-        {{- if eq .NoIPAddr false }}
         {{- $range_zero := index .Ranges 0}}
           # set GW
           {{- if $range_zero.Gateway}}
@@ -303,7 +302,6 @@ vim-cmd hostsvc/vmotion/vnic_set $nic
             esxcli network ip dns search add --domain {{.}}
             {{- end}}
           {{- end}}
-        {{- end}}
       {{- end}}  {{/* range .Networks  */}}
     {{- end}}    {{/* if gt (len .Networks) 0 */}}
   {{- end}}  {{/* range .Connections  */}}
